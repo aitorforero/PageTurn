@@ -1,0 +1,23 @@
+{
+    "sqltools.connections": [
+        {
+            "previewLimit": 50,
+            "driver": "SQLite",
+            "database": "/media/aforero/KOBOeReader/.kobo/KoboReader.sqlite",
+            "name": "Kobo"
+        },
+        {
+            "mysqlOptions": {
+                "authProtocol": "default"
+            },
+            "previewLimit": 50,
+            "server": "192.168.0.10",
+            "port": 3306,
+            "askForPassword": true,
+            "driver": "MariaDB",
+            "name": "openHAB",
+            "database": "OpenHAB3",
+            "username": "openhab"
+        }
+    ]
+}

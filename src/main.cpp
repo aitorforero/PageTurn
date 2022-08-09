@@ -21,10 +21,10 @@
 #define BUTTON_LEFT 13
 #define BUTTON_RIGHT 12
 #define BUTTON_PAIRING 14
-#define BUTTON_DEBOUNCE_INTERVAL 500
+#define BUTTON_DEBOUNCE_INTERVAL 1000
 
-#define KEY_LEFT_PEDDAL 98  // A
-#define KEY_RIGHT_PEDDAL 99 // B
+#define KEY_LEFT_PEDDAL 97  // A
+#define KEY_RIGHT_PEDDAL 98 // B
 
 BleKeyboard* bleKeyboard;
 Button leftButton(BUTTON_LEFT, BUTTON_DEBOUNCE_INTERVAL);
@@ -117,6 +117,7 @@ void buttonRightPressed(Button * button)
   Serial.println("buttonRightPressed");
   if (connected)
   {
+    Serial.println("press");
     bleKeyboard->press(KEY_RIGHT_PEDDAL);
   }
 }
@@ -126,6 +127,7 @@ void buttonRightReleased(Button * button)
   Serial.println("buttonRightReleased");
   if (connected)
   {
+    Serial.println("release");
     bleKeyboard->release(KEY_RIGHT_PEDDAL);
   }
 }
@@ -167,6 +169,7 @@ void loop()
     {
       Serial.println("Connected");
       connected = true;
+      bleKeyboard->releaseAll();
     }
   }
   else

@@ -12,10 +12,12 @@ Button::Button(uint8_t pin, long debounceTime)
 
 void Button::loop()
 {
+    int readValue = digitalRead(this->pin);
+
     long currentMillis = millis();
     if((currentMillis - this->lastRead) >= this->readInterval)
     {
-        this->mask = this->mask << 1 | digitalRead(this->pin);
+        this->mask = this->mask << 1 | readValue;
         if(this->mask == 0x0 && !this->pressed)
         {
             this->pressed = true;
