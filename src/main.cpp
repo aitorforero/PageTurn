@@ -1,6 +1,3 @@
-/**
- * This example turns the ESP32 into a Bluetooth LE keyboard that writes the words, presses Enter, presses a media key and then Ctrl+Alt+Delete
- */
 #include <Arduino.h>
 #include <BleKeyboard.h>
 #include "esp_adc_cal.h"
@@ -15,25 +12,35 @@
 #define OFF_INTERVAL 750
 #define BATTERY_CHECK_INTERVAL 10000
 
-#define LED_RED 27
-#define LED_GREEN 26
+#define LED_RED 14
+#define LED_GREEN 12
 
-#define BUTTON_LEFT 13
-#define BUTTON_RIGHT 12
-#define BUTTON_PAIRING 14
+#define BUTTON_1 4
+#define BUTTON_2 0
+#define BUTTON_3 2
+#define BUTTON_4 15
+
+#define BUTTON_PAIRING 13
 #define BUTTON_DEBOUNCE_INTERVAL 1000
+#define BUTTON_PAIRING_PRESSED_INTERVAL 3000
 
-#define KEY_LEFT_PEDDAL 97  // A
-#define KEY_RIGHT_PEDDAL 98 // B
+#define KEY_BUTTON_1 97  // A
+#define KEY_BUTTON_2 98 // B
+#define KEY_BUTTON_3 99 // C
+#define KEY_BUTTON_4 100 // D
 
 BleKeyboard* bleKeyboard;
-Button leftButton(BUTTON_LEFT, BUTTON_DEBOUNCE_INTERVAL);
-Button rightButton(BUTTON_RIGHT, BUTTON_DEBOUNCE_INTERVAL);
+Button button1(BUTTON_1, BUTTON_DEBOUNCE_INTERVAL);
+Button button2(BUTTON_2, BUTTON_DEBOUNCE_INTERVAL);
+Button button3(BUTTON_3, BUTTON_DEBOUNCE_INTERVAL);
+Button button4(BUTTON_4, BUTTON_DEBOUNCE_INTERVAL);
+Button buttonPairing(BUTTON_PAIRING, BUTTON_DEBOUNCE_INTERVAL);
 
 bool connected = false;
 bool batteryLow = false;
 int batteryLevel = 100;
 unsigned long lastBatteryCheck;
+unsigned long millisPairingPressed = 0;
 
 void updateLEDs()
 {
@@ -92,45 +99,120 @@ void batteryCheck()
   }
 }
 
-void buttonLeftPressed(Button * button)
+void remove_all_bonded_devices(void)
 {
-  Serial.println("buttonLeftPressed");
+    int dev_num = esp_ble_get_bond_device_num();
+    esp_ble_bond_dev_t *dev_list = (esp_ble_bond_dev_t *)malloc(sizeof(esp_ble_bond_dev_t) * dev_num);
+    esp_ble_get_bond_device_list(&dev_num, dev_list);
+    for (int i = 0; i < dev_num; i++) {
+        esp_ble_remove_bond_device(dev_list[i].bd_addr);
+    }
+
+    free(dev_list);
+}
+
+
+void button1Pressed(Button * button)
+{
+  Serial.println("button1Pressed");
   if (connected)
   {
     Serial.println("press");
-    bleKeyboard->press(KEY_LEFT_PEDDAL);
+    bleKeyboard->press(KEY_BUTTON_1);
   }
 }
 
-void buttonLeftReleased(Button * button)
+void button1Released(Button * button)
 {
-  Serial.println("buttonLeftReleased");
+  Serial.println("button1Released");
   if (connected)
   {
     Serial.println("release");
-    bleKeyboard->release(KEY_LEFT_PEDDAL);
+    bleKeyboard->release(KEY_BUTTON_1);
   }
 }
 
-void buttonRightPressed(Button * button)
+void button2Pressed(Button * button)
 {
-  Serial.println("buttonRightPressed");
+  Serial.println("button2Pressed");
   if (connected)
   {
     Serial.println("press");
-    bleKeyboard->press(KEY_RIGHT_PEDDAL);
+    bleKeyboard->press(KEY_BUTTON_2);
   }
 }
 
-void buttonRightReleased(Button * button)
+void button2Released(Button * button)
 {
-  Serial.println("buttonRightReleased");
+  Serial.println("button2Released");
   if (connected)
   {
     Serial.println("release");
-    bleKeyboard->release(KEY_RIGHT_PEDDAL);
+    bleKeyboard->release(KEY_BUTTON_2);
   }
 }
+
+void button3Pressed(Button * button)
+{
+  Serial.println("button3Pressed");
+  if (connected)
+  {
+    Serial.println("press");
+    bleKeyboard->press(KEY_BUTTON_3);
+  }
+}
+
+void button3Released(Button * button)
+{
+  Serial.println("button3Released");
+  if (connected)
+  {
+    Serial.println("release");
+    bleKeyboard->release(KEY_BUTTON_3);
+  }
+}
+
+void button4Pressed(Button * button)
+{
+  Serial.println("button4Pressed");
+  if (connected)
+  {
+    Serial.println("press");
+    bleKeyboard->press(KEY_BUTTON_4);
+  }
+}
+
+void button4Released(Button * button)
+{
+  Serial.println("button4Released");
+  if (connected)
+  {
+    Serial.println("release");
+    bleKeyboard->release(KEY_BUTTON_4);
+  }
+}
+
+void buttonPairingPressed(Button * button)
+{
+  Serial.println("buttonPairingPressed");
+  millisPairingPressed = millis();
+}
+
+void buttonPairingReleased(Button * button)
+{
+  Serial.println("buttonPairingReleased");
+  unsigned long millisSincePairingPressed = millis() - millisPairingPressed;
+  Serial.printf("Millis since Pairing Pressed = %i", millisSincePairingPressed);
+
+  Serial.println();
+
+  if(millisSincePairingPressed > BUTTON_PAIRING_PRESSED_INTERVAL)
+  {
+    Serial.println("Reset Pairing");
+    remove_all_bonded_devices();
+  }
+}
+
 
 void setup()
 {
@@ -140,13 +222,21 @@ void setup()
   pinMode(LED_GREEN, OUTPUT);
   pinMode(LED_RED, OUTPUT);
   pinMode(BATLEVEL, INPUT);
-  pinMode(BUTTON_LEFT, INPUT_PULLUP);
-  pinMode(BUTTON_RIGHT, INPUT_PULLUP);
+  pinMode(BUTTON_1, INPUT_PULLUP);
+  pinMode(BUTTON_2, INPUT_PULLUP);
+  pinMode(BUTTON_3, INPUT_PULLUP);
+  pinMode(BUTTON_PAIRING, INPUT_PULLUP);
 
-  leftButton.setPressedCallback(&buttonLeftPressed);
-  leftButton.setReleasedCallback(&buttonLeftReleased);
-  rightButton.setPressedCallback(&buttonRightPressed);
-  rightButton.setReleasedCallback(&buttonRightReleased);
+  button1.setPressedCallback(&button1Pressed);
+  button1.setReleasedCallback(&button1Released);
+  button2.setPressedCallback(&button2Pressed);
+  button2.setReleasedCallback(&button2Released);
+  button3.setPressedCallback(&button3Pressed);
+  button3.setReleasedCallback(&button3Released);
+  button4.setPressedCallback(&button4Pressed);
+  button4.setReleasedCallback(&button4Released);
+  buttonPairing.setPressedCallback(&buttonPairingPressed);
+  buttonPairing.setReleasedCallback(&buttonPairingReleased);
 
   connected = false;
   batteryCheck();
@@ -181,8 +271,11 @@ void loop()
     }
   }
 
-  leftButton.loop();
-  rightButton.loop();
+  button1.loop();
+  button2.loop();
+  button3.loop();
+  button4.loop();
+  buttonPairing.loop();
 
   updateLEDs();
 }
