@@ -4,16 +4,21 @@
 
 #include <button.h>
 
-#define BATLEVEL 35
-#define BATTERY_LOW_LEVEL 90
-#define CORRECTION 1.045f
-
-#define ON_INTERVAL 250
-#define OFF_INTERVAL 750
+#define BATTERY_CHANNEL ADC1_CHANNEL_7
+#define BATTERY_ATTEN ADC_ATTEN_DB_11
+#define BATTERY_WIDTH_BIT ADC_WIDTH_BIT_12
+#define DEFAULT_VREF    1100
+#define BATTERY_MAX_VOL 4200.0
+#define BATTERY_MIN_VOL 3000.0
+#define BATTERY_LOW_LEVEL 20
 #define BATTERY_CHECK_INTERVAL 10000
 
-#define LED_RED 14
-#define LED_GREEN 12
+#define NOT_CONNECTED_OFF_INTERVAL 750
+#define NOT_CONNECTED_ON_INTERVAL 250
+#define LOW_BATTERY_OFF_INTERVAL 250
+#define LOW_BATTERY_ON_INTERVAL 750
+
+#define LED 12
 
 #define BUTTON_1 4
 #define BUTTON_2 0
@@ -40,63 +45,89 @@ bool connected = false;
 bool batteryLow = false;
 int batteryLevel = 100;
 unsigned long lastBatteryCheck;
+static esp_adc_cal_characteristics_t *adc_chars;
 unsigned long millisPairingPressed = 0;
+
+int notConnectedOffIntervalStart = 0;
+int notConnectedOffIntervalEnd = notConnectedOffIntervalStart + NOT_CONNECTED_OFF_INTERVAL;
+int lowBatteryOffIntervalStart = notConnectedOffIntervalEnd + NOT_CONNECTED_ON_INTERVAL;
+int lowBatteryOffIntervalEnd = lowBatteryOffIntervalStart + LOW_BATTERY_OFF_INTERVAL;
 
 void updateLEDs()
 {
-  if (connected)
+  int moment = millis() % (lowBatteryOffIntervalEnd + LOW_BATTERY_ON_INTERVAL);
+
+ 
+
+  if(!connected && moment >= notConnectedOffIntervalStart && moment < notConnectedOffIntervalEnd ) 
   {
-    digitalWrite(LED_GREEN, HIGH);
+    digitalWrite(LED, LOW);
+  }
+  else if(batteryLow && moment >= lowBatteryOffIntervalStart && moment < lowBatteryOffIntervalEnd) 
+  {
+    digitalWrite(LED, LOW);
   }
   else
   {
-    if (((millis() % (ON_INTERVAL + OFF_INTERVAL))) <= ON_INTERVAL)
-    {
-      digitalWrite(LED_GREEN, HIGH);
-    }
-    else
-    {
-      digitalWrite(LED_GREEN, LOW);
-    }
+    digitalWrite(LED, HIGH);
+  }
+}
+void setupBatteryCheck()
+{
+  adc1_config_width(BATTERY_WIDTH_BIT);
+  adc1_config_channel_atten(BATTERY_CHANNEL, BATTERY_ATTEN);
+
+  adc_chars = (esp_adc_cal_characteristics_t * )calloc(1, sizeof(esp_adc_cal_characteristics_t));
+  esp_adc_cal_value_t val_type = esp_adc_cal_characterize(ADC_UNIT_1, BATTERY_ATTEN, BATTERY_WIDTH_BIT, DEFAULT_VREF, adc_chars);
+
+  if (val_type == ESP_ADC_CAL_VAL_EFUSE_TP) {
+      printf("Characterized using Two Point Value\n");
+  } else if (val_type == ESP_ADC_CAL_VAL_EFUSE_VREF) {
+      printf("Characterized using eFuse Vref\n");
+  } else {
+      printf("Characterized using Default Vref\n");
   }
 
-  if (batteryLow)
-  {
-    digitalWrite(LED_RED, HIGH);
-  }
-  else
-  {
-    digitalWrite(LED_RED, LOW);
-  }
+  lastBatteryCheck = millis();
+
 }
 
 int getBatteryLevel()
 {
-  int rawValue = analogRead(BATLEVEL) * 2; // * 3.3 * 2.0 * CORRECTION)/ 4095.0f );
-  Serial.println(rawValue);
+  int raw = adc1_get_raw(BATTERY_CHANNEL); // The battery is connected with a voltage divider (100K -|- 100K)
+  int correctedValue = esp_adc_cal_raw_to_voltage(raw, adc_chars) * 2;
 
-  esp_adc_cal_characteristics_t adc_chars;
+  int level = (correctedValue - BATTERY_MIN_VOL) / (BATTERY_MAX_VOL - BATTERY_MIN_VOL) * 100.0 ;
 
-  esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_BIT_12, 1100, &adc_chars);
+  if(level > 100)
+  {
+    level = 100;
+  } 
+  else if(level < 0) 
+  {
+    level = 0;    
+  }
+ 
+  printf("Raw: %d\tVoltage: %dmV\tPorcentage: %d%\n", raw, correctedValue, level);
 
-  int correctedValue = (((float)esp_adc_cal_raw_to_voltage(rawValue, &adc_chars)) / 33.0f);
-
-  Serial.println(correctedValue);
-
-  return correctedValue;
+  return level;
 }
 
 void batteryCheck()
 {
-  lastBatteryCheck = millis();
-  batteryLevel = getBatteryLevel();
-  batteryLow = (batteryLevel < BATTERY_LOW_LEVEL);
-
-  Serial.println(batteryLevel);
-  if(connected) 
+  if((millis() - lastBatteryCheck) >=  BATTERY_CHECK_INTERVAL)
   {
-    bleKeyboard->setBatteryLevel(batteryLevel);
+    lastBatteryCheck = millis();
+    batteryLevel = getBatteryLevel();
+    batteryLow = (batteryLevel < BATTERY_LOW_LEVEL);
+
+    if(connected) 
+    {
+      bleKeyboard->setBatteryLevel(batteryLevel);
+    }    
   }
+
+
 }
 
 void remove_all_bonded_devices(void)
@@ -217,11 +248,8 @@ void buttonPairingReleased(Button * button)
 void setup()
 {
   Serial.begin(115200);
-  Serial.println("Starting BLE work!");
 
-  pinMode(LED_GREEN, OUTPUT);
-  pinMode(LED_RED, OUTPUT);
-  pinMode(BATLEVEL, INPUT);
+  pinMode(LED, OUTPUT);
   pinMode(BUTTON_1, INPUT_PULLUP);
   pinMode(BUTTON_2, INPUT_PULLUP);
   pinMode(BUTTON_3, INPUT_PULLUP);
@@ -239,19 +267,17 @@ void setup()
   buttonPairing.setReleasedCallback(&buttonPairingReleased);
 
   connected = false;
-  batteryCheck();
+  setupBatteryCheck();
   bleKeyboard = new BleKeyboard("Page Turner", "ByForero", batteryLevel);
   bleKeyboard->begin();
 }
 
 void loop()
 {
-  bool doBatteryCheck = ((millis() - BATTERY_CHECK_INTERVAL) >= lastBatteryCheck);
 
-  if (doBatteryCheck)
-  {
-    batteryCheck();
-  }
+
+  batteryCheck();
+
 
   if (bleKeyboard->isConnected())
   {
